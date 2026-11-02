@@ -8,71 +8,144 @@
 <link rel="stylesheet" href="lib/maplibre-gl.css">
 <script src="lib/maplibre-gl.js"></script>
 <script src="flypath.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700&display=swap">
 <style>
-  html, body { margin: 0; height: 100%; font: 13px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1d2733; }
-  #map { position: absolute; inset: 0; background: #0b1638; }
-  #panel { position: absolute; top: 10px; left: 10px; width: 270px; max-height: calc(100% - 40px); overflow-y: auto;
-           background: rgba(255,255,255,0.94); border-radius: 8px; padding: 10px 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-  #panel h1 { font-size: 15px; margin: 0 0 2px; }
-  #panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #556; margin: 12px 0 4px; }
-  #panel label { display: block; margin: 2px 0; cursor: pointer; }
-  .sub { color: #667; font-size: 11.5px; }
-  .key { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 2px 0 4px 20px; font-size: 11px; color: #445; }
-  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: -1px; }
-  .bar { height: 8px; border-radius: 2px; margin: 2px 0 0 20px; }
-  .ends { display: flex; justify-content: space-between; margin-left: 20px; font-size: 11px; color: #445; }
-  select, input[type=range] { vertical-align: middle; }
-  button { margin: 4px 4px 0 0; padding: 4px 8px; border: 1px solid #99a; border-radius: 4px; background: #fff; cursor: pointer; }
-  button:hover { background: #eef; }
-  #readout { position: absolute; bottom: 28px; right: 10px; background: rgba(255,255,255,0.9); padding: 3px 7px;
-             border-radius: 4px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
-  .maplibregl-popup-content { font-size: 12px; line-height: 1.45; }
-  .maplibregl-popup-content table td:first-child { color: #667; padding-right: 8px; }
+  /* Panel colours are the two ends of the bathymetry ramp: abyss (-2000 m) and lagoon (0 m) */
+  :root { --abyss: #0b1638; --deep: #13285c; --lagoon: #b9ece4; --reef: #45b9c6;
+          --ink: #e9f2f5; --muted: #a3b6cc; --rule: rgba(185,236,228,0.16); }
+  html, body { margin: 0; height: 100%; background: var(--abyss); color: var(--ink);
+               font: 13px/1.45 "Atkinson Hyperlegible Next", -apple-system, "Helvetica Neue", Arial, sans-serif;
+               font-variant-numeric: tabular-nums; }
+  #map { position: absolute; inset: 0; background: var(--abyss); }
+
+  #panel { position: absolute; top: 12px; left: 12px; width: 292px; max-height: calc(100% - 24px); overflow-y: auto;
+           box-sizing: border-box; padding: 16px 18px 14px; border-radius: 10px;
+           background: rgba(11,22,56,0.86); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+           border: 1px solid var(--rule); box-shadow: 0 8px 28px rgba(0,0,0,0.35); }
+  #panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  #panel h1 { font-size: 20px; line-height: 1.15; font-weight: 700; margin: 0; letter-spacing: -0.005em; }
+  .sub { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  #panel h2 { font-size: 13px; font-weight: 700; color: var(--lagoon); margin: 18px 0 6px; }
+  #panel label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 5px 0; cursor: pointer; }
+  #panel label.inline { display: inline-flex; margin: 0; }
+  input[type=checkbox] { accent-color: var(--reef); width: 15px; height: 15px; margin: 0; flex: none; }
+  input[type=range] { accent-color: var(--reef); flex: 1; min-width: 0; }
+  select { font: inherit; color: var(--ink); background: var(--deep); border: 1px solid var(--rule); border-radius: 5px; padding: 1px 2px; }
+  :focus-visible { outline: 2px solid var(--lagoon); outline-offset: 2px; }
+
+  /* depth scale: one equal-width step per ramp stop, so 0-40 m is readable next to 400-2000 m */
+  .scale { margin: 14px 0 0; }
+  .steps { display: grid; grid-template-columns: repeat(4, 0.5fr) repeat(8, 1fr); height: 12px; border-radius: 3px; overflow: hidden; }
+  .ticks { position: relative; height: 15px; font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .ticks span { position: absolute; transform: translateX(-50%); }
+  .ticks span:first-child { transform: none; }
+  .ticks span:last-child { transform: translateX(-100%); }
+  .scale .cap { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  .key { display: flex; flex-wrap: wrap; gap: 3px 10px; margin: 0 0 6px 23px; font-size: 11.5px; color: var(--muted); }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .bar { height: 8px; border-radius: 2px; margin: 0 0 0 23px; }
+  .ends { display: flex; justify-content: space-between; margin: 2px 0 6px 23px; font-size: 11px; color: var(--muted); }
+  label:has(input:not(:checked)) + .key, label:has(input:not(:checked)) + .bar,
+  label:has(input:not(:checked)) + .bar + .ends { display: none; }
+
+  #panel details { margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 10px; }
+  #panel summary { cursor: pointer; font-weight: 700; color: var(--lagoon); }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .row output { min-width: 34px; text-align: right; }
+  .buttons { display: flex; gap: 8px; margin-top: 10px; }
+  #panel button { font: inherit; font-weight: 600; color: var(--abyss); background: var(--lagoon); border: 0; border-radius: 6px;
+           padding: 6px 12px; cursor: pointer; }
+  #panel button.quiet { color: var(--ink); background: transparent; border: 1px solid var(--rule); }
+  #panel button:hover { filter: brightness(1.08); }
+  .hint { color: var(--muted); font-size: 11.5px; margin: 10px 0 0; }
+  #fold { display: none; }
+
+  #readout { position: absolute; bottom: 30px; right: 10px; padding: 3px 8px; border-radius: 5px; font-size: 12px;
+             background: rgba(11,22,56,0.8); color: var(--ink); }
+  .maplibregl-popup-content { background: var(--abyss); color: var(--ink); border: 1px solid var(--rule);
+                              border-radius: 8px; padding: 12px 14px; font: inherit; font-size: 12px; }
+  .maplibregl-popup-tip { border-top-color: var(--abyss) !important; border-bottom-color: var(--abyss) !important; }
+  .maplibregl-popup-close-button { color: var(--muted); font-size: 16px; }
+  .pop-depth { font-size: 22px; font-weight: 700; line-height: 1.1; }
+  .pop-depth small { font-size: 12px; font-weight: 400; color: var(--muted); }
+  .maplibregl-popup-content table { margin-top: 6px; border-collapse: collapse; }
+  .maplibregl-popup-content td { padding: 1px 0; vertical-align: top; }
+  .maplibregl-popup-content td:first-child { color: var(--muted); padding-right: 10px; white-space: nowrap; }
+
+  @media (max-width: 640px) {
+    #panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 60vh; border-radius: 12px 12px 0 0; }
+    #panel.folded > :not(header) { display: none; }
+    #fold { display: block; padding: 4px 10px; }
+    #readout, .maplibregl-ctrl-scale { display: none; }
+    #panel select { padding: 0 2px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #tour { display: none; } }
   body.video #panel, body.video #readout, body.video .maplibregl-ctrl { display: none !important; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="panel">
-  <h1>Mo'orea bottom topography</h1>
-  <div class="sub">Merged surface v2 (5 m) and SHOM 2015 LiDAR (1 m), metres above local mean sea level. Click anywhere for values.</div>
+  <header>
+    <div>
+      <h1>Mo'orea seafloor</h1>
+      <p class="sub">Depth and height in metres from local mean sea level. 5 m around the whole island, 1 m LiDAR over the lagoon and reef.</p>
+    </div>
+    <button id="fold" class="quiet" aria-expanded="true" aria-controls="panel">Hide</button>
+  </header>
 
-  <h2>Surface</h2>
-  <label><input type="checkbox" id="relief5" checked> 5 m merged surface (whole island)</label>
-  <label><input type="checkbox" id="relief1" checked> 1 m LiDAR (lagoon, reef, land strip)</label>
-  <label><input type="checkbox" id="imagery"> Satellite imagery (Esri)</label>
-  <div class="bar" style="background: linear-gradient(to right, #0b1638, #173c7a, #1f76ad, #2a97bd, #45b9c6, #b9ece4, #d9cfa8, #6f9e5a, #7a6b52)"></div>
-  <div class="ends"><span>−2000</span><span>−40</span><span>−10</span><span>0</span><span>+1200 m</span></div>
-
-  <h2>Data quality</h2>
-  <label><input type="checkbox" id="source"> Source of each 5 m cell</label>
-  <div class="key">
-    <span><i class="sw" style="background:#0072B2"></i>LiDAR</span>
-    <span><i class="sw" style="background:#CC79A7"></i>LiDAR/EM710 blend</span>
-    <span><i class="sw" style="background:#56B4E9"></i>EM710 multibeam</span>
-    <span><i class="sw" style="background:#E69F00"></i>SHOM 20 m sea</span>
-    <span><i class="sw" style="background:#D55E00"></i>SHOM 100 m</span>
-    <span><i class="sw" style="background:#999999"></i>SHOM 20 m land</span>
+  <div class="scale" aria-label="Colour scale: depth below and height above mean sea level">
+    <div class="steps">
+      <i style="background:linear-gradient(90deg,#a89a88,#7a6b52)"></i><i style="background:linear-gradient(90deg,#7a6b52,#4f7a45)"></i>
+      <i style="background:linear-gradient(90deg,#4f7a45,#6f9e5a)"></i><i style="background:linear-gradient(90deg,#6f9e5a,#d9cfa8)"></i>
+      <i style="background:linear-gradient(90deg,#b9ece4,#7fd6d0)"></i><i style="background:linear-gradient(90deg,#7fd6d0,#45b9c6)"></i>
+      <i style="background:linear-gradient(90deg,#45b9c6,#2a97bd)"></i><i style="background:linear-gradient(90deg,#2a97bd,#1f76ad)"></i>
+      <i style="background:linear-gradient(90deg,#1f76ad,#1b5596)"></i><i style="background:linear-gradient(90deg,#1b5596,#173c7a)"></i>
+      <i style="background:linear-gradient(90deg,#173c7a,#13285c)"></i><i style="background:linear-gradient(90deg,#13285c,#0b1638)"></i>
+    </div>
+    <div class="ticks"><span style="left:0%">1250</span><span style="left:20%">0</span><span style="left:30%">2</span><span style="left:40%">5</span><span style="left:50%">10</span><span style="left:60%">20</span><span style="left:70%">40</span><span style="left:80%">100</span><span style="left:100%">2000</span></div>
+    <div class="cap"><span>Height on land, m</span><span>Depth, m</span></div>
   </div>
-  <label><input type="checkbox" id="sigma"> Uncertainty, 1σ (5 m)</label>
-  <div class="bar" style="background: linear-gradient(to right, #fcfdbf, #fc8961, #b73779, #51127c, #000004)"></div>
-  <div class="ends"><span>0.1 m</span><span>1 m</span><span>30 m</span></div>
-  <label><input type="checkbox" id="effres"> True resolution of the 1 m LiDAR</label>
-  <div class="bar" style="background: linear-gradient(to right, #fcfdbf, #fc8961, #b73779, #51127c, #000004)"></div>
-  <div class="ends"><span>0.3 m</span><span>1 m</span><span>3 m</span><span>10 m</span></div>
-  <label>Overlay opacity <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.8"></label>
 
-  <h2>Depth band</h2>
-  <label><input type="checkbox" id="bands"> Highlight depths from
-    <select id="bandTop"></select> to <select id="bandBot"></select> m</label>
-  <label><input type="checkbox" id="contours"> Depth contours</label>
+  <h2>Show</h2>
+  <label><input type="checkbox" id="relief5" checked> 5 m surface, whole island</label>
+  <label><input type="checkbox" id="relief1" checked> 1 m LiDAR, lagoon and reef</label>
+  <label><input type="checkbox" id="imagery"> Satellite imagery</label>
   <label><input type="checkbox" id="sites" checked> MCR LTER fore-reef sites</label>
+  <label><input type="checkbox" id="contours"> Depth contours</label>
+  <label><input type="checkbox" id="bands"> Highlight
+    <select id="bandTop" aria-label="Shallowest depth, m"></select>–<select id="bandBot" aria-label="Deepest depth, m"></select> m</label>
 
-  <h2>3D</h2>
+  <h2>View</h2>
   <label><input type="checkbox" id="terrain3d" checked> 3D terrain</label>
-  <label>Vertical exaggeration <input type="range" id="exag" min="1" max="5" step="0.25" value="1.5"> <span id="exagv">1.5×</span></label>
-  <button id="tour">Fly the north shore</button><button id="home">Whole island</button>
-  <div class="sub" style="margin-top:6px">Right-drag or Ctrl-drag to tilt and rotate.</div>
+  <div class="row"><label class="inline" for="exag">Exaggeration</label>
+    <input type="range" id="exag" min="1" max="5" step="0.25" value="1.5"> <output id="exagv">1.5×</output></div>
+  <div class="buttons"><button id="tour">Fly the north shore</button><button id="home" class="quiet">Whole island</button></div>
+  <p class="hint">Click anywhere for depth and data source. Right-drag or Ctrl-drag to tilt and rotate.</p>
+
+  <details>
+    <summary>Data quality</summary>
+    <label><input type="checkbox" id="source"> Source of each 5 m cell</label>
+    <div class="key">
+      <span><i class="sw" style="background:#0072B2"></i>SHOM LiDAR</span>
+      <span><i class="sw" style="background:#CC79A7"></i>LiDAR + multibeam</span>
+      <span><i class="sw" style="background:#56B4E9"></i>KM1416 multibeam</span>
+      <span><i class="sw" style="background:#E69F00"></i>SHOM 20 m sea</span>
+      <span><i class="sw" style="background:#D55E00"></i>SHOM 100 m</span>
+      <span><i class="sw" style="background:#999999"></i>SHOM 20 m land</span>
+    </div>
+    <label><input type="checkbox" id="sigma"> Uncertainty, 1σ</label>
+    <div class="bar" style="background: linear-gradient(to right, #fcfdbf, #fc8961, #b73779, #51127c, #000004)"></div>
+    <div class="ends"><span>0.1 m</span><span>1 m</span><span>30 m</span></div>
+    <label><input type="checkbox" id="effres"> True resolution of the 1 m LiDAR</label>
+    <div class="bar" style="background: linear-gradient(to right, #fcfdbf, #fc8961, #b73779, #51127c, #000004)"></div>
+    <div class="ends"><span>0.3 m</span><span>1 m</span><span>3 m</span><span>10 m</span></div>
+    <div class="row"><label class="inline" for="opacity">Overlay opacity</label>
+      <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.8"></div>
+  </details>
 </div>
 <div id="readout"></div>
 
@@ -94,7 +167,7 @@ const map = new maplibregl.Map({
   maxBounds: [[-150.15, -17.80], [-149.50, -17.25]],
   canvasContextAttributes: {antialias: true, preserveDrawingBuffer: VIDEO},
   pixelRatio: VIDEO ? 1 : window.devicePixelRatio,
-  attributionControl: {compact: true},
+  attributionControl: false,
   style: {
     version: 8,
     glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
@@ -147,6 +220,12 @@ const map = new maplibregl.Map({
 });
 
 if (!VIDEO) {
+  const phone = matchMedia("(max-width: 640px)").matches;
+  map.addControl(new maplibregl.AttributionControl({compact: true}), phone ? "top-left" : "bottom-right");
+  if (phone) map.once("load", () => {
+    const a = document.querySelector(".maplibregl-ctrl-attrib");
+    a.classList.remove("maplibregl-compact-show"); a.removeAttribute("open");
+  });
   map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
   map.addControl(new maplibregl.ScaleControl({unit: "metric"}), "bottom-left");
 }
@@ -222,14 +301,17 @@ map.on("click", async e => {
   try { const res = await fetch(`q?lon=${lng}&lat=${lat}`); if (res.ok) r = await res.json(); } catch (err) {}
   const full = r && !r.error;
   if (!full) r = await staticReadout(lng, lat);
-  let rows = [[full ? "Elevation (5 m)" : "Elevation (~5 m)", fmt(r.elev_5m)], ["Source", r.source_5m || "–"]];
+  const h = r.elev_5m;
+  const head = h === null || h === undefined ? `<div class="pop-depth"><small>No survey data here</small></div>`
+    : `<div class="pop-depth">${Math.abs(h).toFixed(1)} m <small>${h < 0 ? "deep" : "above sea level"}${full ? "" : ", about 5 m grid"}</small></div>`;
+  let rows = h === null || h === undefined ? [] : [["Source", r.source_5m || "–"]];
   if (full) rows.push(["Uncertainty 1σ", fmt(r.sigma_5m)]);
-  if (full && r.elev_1m !== undefined) rows.push(["Elevation (1 m)", fmt(r.elev_1m)], ["LiDAR points (5×5 m)", r.npts],
+  if (full && r.elev_1m !== undefined) rows.push(["1 m LiDAR", r.elev_1m === null ? "–" : Math.abs(r.elev_1m).toFixed(1) + " m"], ["LiDAR points, 5×5 m", r.npts],
                                                   ["True resolution", fmt(r.eff_res_1m)], ["Sensor", r.sensor_1m || "–"]);
   rows.push(["Lat, lon", `${lat.toFixed(5)}, ${lng.toFixed(5)}`]);
   if (full) rows.push(["UTM 6S E, N", `${r.utm_e}, ${r.utm_n}`]);
-  new maplibregl.Popup({maxWidth: "320px"}).setLngLat(e.lngLat)
-    .setHTML("<table>" + rows.map(([a, b]) => `<tr><td>${a}</td><td><b>${b}</b></td></tr>`).join("") + "</table>")
+  new maplibregl.Popup({maxWidth: "300px"}).setLngLat(e.lngLat)
+    .setHTML(head + "<table>" + rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("") + "</table>")
     .addTo(map);
 });
 map.on("mousemove", e => {
@@ -239,16 +321,23 @@ map.on("mousemove", e => {
 // fly-through: the same path record_flythrough.py renders frame by frame
 let touring = false;
 document.getElementById("tour").addEventListener("click", () => {
-  if (touring) { touring = false; return; }
-  touring = true;
+  const btn = document.getElementById("tour");
+  const stop = () => { touring = false; btn.textContent = "Fly the north shore"; };
+  if (touring) { stop(); return; }
+  touring = true; btn.textContent = "Stop";
   const t0 = performance.now();
   const step = now => {
     const t = (now - t0) / 1000;
-    if (!touring || t > FLYPATH.duration) { touring = false; return; }
+    if (!touring || t > FLYPATH.duration) { stop(); return; }
     map.jumpTo(camAt(t));
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
+});
+const fold = document.getElementById("fold");
+fold.addEventListener("click", () => {
+  const folded = document.getElementById("panel").classList.toggle("folded");
+  fold.textContent = folded ? "Layers" : "Hide"; fold.setAttribute("aria-expanded", String(!folded));
 });
 document.getElementById("home").addEventListener("click", () => map.flyTo({...HOME, duration: 2500}));
 
