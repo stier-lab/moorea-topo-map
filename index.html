@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mo'orea bottom topography</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- MapLibre GL JS 5.x, vendored into <webmap dir>/lib by build_webmap.py (see lib/VERSION) -->
+<link rel="stylesheet" href="lib/maplibre-gl.css">
+<script src="lib/maplibre-gl.js"></script>
+<script src="flypath.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; font: 13px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1d2733; }
+  #map { position: absolute; inset: 0; background: #0b1638; }
+  #panel { position: absolute; top: 10px; left: 10px; width: 270px; max-height: calc(100% - 40px); overflow-y: auto;
+           background: rgba(255,255,255,0.94); border-radius: 8px; padding: 10px 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+  #panel h1 { font-size: 15px; margin: 0 0 2px; }
+  #panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #556; margin: 12px 0 4px; }
+  #panel label { display: block; margin: 2px 0; cursor: pointer; }
+  .sub { color: #667; font-size: 11.5px; }
+  .key { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 2px 0 4px 20px; font-size: 11px; color: #445; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 3px; vertical-align: -1px; }
+  .bar { height: 8px; border-radius: 2px; margin: 2px 0 0 20px; }
+  .ends { display: flex; justify-content: space-between; margin-left: 20px; font-size: 11px; color: #445; }
+  select, input[type=range] { vertical-align: middle; }
+  button { margin: 4px 4px 0 0; padding: 4px 8px; border: 1px solid #99a; border-radius: 4px; background: #fff; cursor: pointer; }
+  button:hover { background: #eef; }
+  #readout { position: absolute; bottom: 28px; right: 10px; background: rgba(255,255,255,0.9); padding: 3px 7px;
+             border-radius: 4px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .maplibregl-popup-content { font-size: 12px; line-height: 1.45; }
+  .maplibregl-popup-content table td:first-child { color: #667; padding-right: 8px; }
+  body.video #panel, body.video #readout, body.video .maplibregl-ctrl { display: none !important; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h1>Mo'orea bottom topography</h1>
+  <div class="sub">Merged surface v2 (5 m) and SHOM 2015 LiDAR (1 m), metres above local mean sea level. Click anywhere for values.</div>
+
+  <h2>Surface</h2>
+  <label><input type="checkbox" id="relief5" checked> 5 m merged surface (whole island)</label>
+  <label><input type="checkbox" id="relief1" checked> 1 m LiDAR (lagoon, reef, land strip)</label>
+  <label><input type="checkbox" id="imagery"> Satellite imagery (Esri)</label>
+  <div class="bar" style="background: linear-gradient(to right, #0b1638, #173c7a, #1f76ad, #2a97bd, #45b9c6, #b9ece4, #d9cfa8, #6f9e5a, #7a6b52)"></div>
+  <div class="ends"><span>−2000</span><span>−40</span><span>−10</span><span>0</span><span>+1200 m</span></div>
+
+  <h2>Data quality</h2>
+  <label><input type="checkbox" id="source"> Source of each 5 m cell</label>
+  <div class="key">
+    <span><i class="sw" style="background:#0072B2"></i>LiDAR</span>
+    <span><i class="sw" style="background:#CC79A7"></i>LiDAR/EM710 blend</span>
+    <span><i class="sw" style="background:#56B4E9"></i>EM710 multibeam</span>
+    <span><i class="sw" style="background:#E69F00"></i>SHOM 20 m sea</span>
+    <span><i class="sw" style="background:#D55E00"></i>SHOM 100 m</span>
+    <span><i class="sw" style="background:#999999"></i>SHOM 20 m land</span>
+  </div>
+  <label><input type="checkbox" id="sigma"> Uncertainty, 1σ (5 m)</label>
+  <div class="bar" style="background: linear-gradient(to right, #fcfdbf, #fc8961, #b73779, #51127c, #000004)"></div>
+  <div class="ends"><span>0.1 m</span><span>1 m</span><span>30 m</span></div>
+  <label><input type="checkbox" id="effres"> True resolution of the 1 m LiDAR</label>
+  <div class="bar" style="background: linear-gradient(to right, #fcfdbf, #fc8961, #b73779, #51127c, #000004)"></div>
+  <div class="ends"><span>0.3 m</span><span>1 m</span><span>3 m</span><span>10 m</span></div>
+  <label>Overlay opacity <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.8"></label>
+
+  <h2>Depth band</h2>
+  <label><input type="checkbox" id="bands"> Highlight depths from
+    <select id="bandTop"></select> to <select id="bandBot"></select> m</label>
+  <label><input type="checkbox" id="contours"> Depth contours</label>
+  <label><input type="checkbox" id="sites" checked> MCR LTER fore-reef sites</label>
+
+  <h2>3D</h2>
+  <label><input type="checkbox" id="terrain3d" checked> 3D terrain</label>
+  <label>Vertical exaggeration <input type="range" id="exag" min="1" max="5" step="0.25" value="1.5"> <span id="exagv">1.5×</span></label>
+  <button id="tour">Fly the north shore</button><button id="home">Whole island</button>
+  <div class="sub" style="margin-top:6px">Right-drag or Ctrl-drag to tilt and rotate.</div>
+</div>
+<div id="readout"></div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const VIDEO = params.has("video");
+if (VIDEO) document.body.classList.add("video");
+
+const LEVELS = [0, -2, -5, -10, -15, -20, -30, -50, -100, -200, -500, -1000, -2000];
+const HOME = {center: [-149.835, -17.535], zoom: 11.3, pitch: 45, bearing: 0};
+const BOUNDS = [-149.98, -17.65, -149.68, -17.41];
+
+const map = new maplibregl.Map({
+  container: "map",
+  hash: !VIDEO,
+  ...HOME,
+  maxPitch: 85,
+  minZoom: 10,
+  maxBounds: [[-150.15, -17.80], [-149.50, -17.25]],
+  canvasContextAttributes: {antialias: true, preserveDrawingBuffer: VIDEO},
+  pixelRatio: VIDEO ? 1 : window.devicePixelRatio,
+  attributionControl: {compact: true},
+  style: {
+    version: 8,
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    // distant sea fades into the same navy as the page background, so the far clip is invisible
+    sky: {"sky-color": "#0b1638", "horizon-color": "#13285c", "fog-color": "#0b1638",
+          "sky-horizon-blend": 0.5, "horizon-fog-blend": 0.8, "fog-ground-blend": 0.35,
+          "atmosphere-blend": 0},
+    sources: {
+      terrain: {type: "raster-dem", tiles: ["tiles/terrain/{z}/{x}/{y}.png"], tileSize: 256,
+                encoding: "terrarium", minzoom: 10, maxzoom: 15},
+      reliefwide: {type: "raster", tiles: ["tiles/reliefwide/{z}/{x}/{y}.webp"], tileSize: 256, minzoom: 10, maxzoom: 12},
+      relief5: {type: "raster", tiles: ["tiles/relief5/{z}/{x}/{y}.webp"], tileSize: 256, minzoom: 10, maxzoom: 15, bounds: BOUNDS,
+                attribution: "Merged surface v2 and 1 m LiDAR: Stier Lab, from SHOM 2015 LiDAR, KM1416 EM710, SHOM 20 m and 100 m DEMs"},
+      relief1: {type: "raster", tiles: ["tiles/relief1/{z}/{x}/{y}.webp"], tileSize: 256, minzoom: 12, maxzoom: 17, bounds: BOUNDS},
+      source:  {type: "raster", tiles: ["tiles/source/{z}/{x}/{y}.webp"], tileSize: 256, minzoom: 10, maxzoom: 14, bounds: BOUNDS},
+      sigma:   {type: "raster", tiles: ["tiles/sigma/{z}/{x}/{y}.webp"], tileSize: 256, minzoom: 10, maxzoom: 14, bounds: BOUNDS},
+      effres:  {type: "raster", tiles: ["tiles/effres/{z}/{x}/{y}.webp"], tileSize: 256, minzoom: 12, maxzoom: 16, bounds: BOUNDS},
+      imagery: {type: "raster", tileSize: 256, maxzoom: 18,
+                tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                attribution: "Imagery: Esri, Maxar, Earthstar Geographics"},
+      bands:    {type: "geojson", data: "bands.geojson"},
+      contours: {type: "geojson", data: "contours.geojson"},
+      sites:    {type: "geojson", data: "sites.geojson", attribution: "MCR LTER sites: BCO-DMO 832378"},
+    },
+    layers: [
+      {id: "bg", type: "background", paint: {"background-color": "#0b1638"}},
+      {id: "reliefwide", type: "raster", source: "reliefwide", paint: {"raster-fade-duration": 0}},
+      {id: "relief5", type: "raster", source: "relief5", paint: {"raster-fade-duration": 0}},
+      {id: "relief1", type: "raster", source: "relief1", minzoom: 12, paint: {"raster-fade-duration": 0}},
+      {id: "imagery", type: "raster", source: "imagery", layout: {visibility: "none"}, paint: {"raster-opacity": 0.85}},
+      {id: "source", type: "raster", source: "source", layout: {visibility: "none"}, paint: {"raster-opacity": 0.8}},
+      {id: "sigma", type: "raster", source: "sigma", layout: {visibility: "none"}, paint: {"raster-opacity": 0.8}},
+      {id: "effres", type: "raster", source: "effres", minzoom: 12, layout: {visibility: "none"}, paint: {"raster-opacity": 0.8}},
+      {id: "bands", type: "fill", source: "bands", layout: {visibility: "none"},
+       paint: {"fill-color": "#ffcc00", "fill-opacity": 0.8, "fill-outline-color": "#7a5c00"}},
+      {id: "contours", type: "line", source: "contours", layout: {visibility: "none"},
+       filter: ["<", ["get", "elev"], 0],
+       paint: {"line-color": "#ffffff", "line-opacity": 0.55, "line-width": ["match", ["get", "elev"], [-10, -50, -100, -500, -1000], 1.4, 0.7]}},
+      {id: "contour-labels", type: "symbol", source: "contours", layout: {visibility: "none",
+         "symbol-placement": "line", "text-field": ["concat", ["to-string", ["*", -1, ["get", "elev"]]], " m"],
+         "text-font": ["Noto Sans Regular"], "text-size": 11}, filter: ["<", ["get", "elev"], 0],
+       paint: {"text-color": "#fff", "text-halo-color": "#0b1638", "text-halo-width": 1.2}},
+      {id: "sites", type: "circle", source: "sites",
+       paint: {"circle-radius": 6, "circle-color": "#ff4f7b", "circle-stroke-color": "#fff", "circle-stroke-width": 1.5}},
+      {id: "site-labels", type: "symbol", source: "sites", layout: {"text-field": ["get", "site"],
+         "text-font": ["Noto Sans Regular"], "text-size": 12, "text-offset": [0, 1.2], "text-anchor": "top"},
+       paint: {"text-color": "#fff", "text-halo-color": "#7a1430", "text-halo-width": 1.4}},
+    ],
+  },
+});
+
+if (!VIDEO) {
+  map.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "top-right");
+  map.addControl(new maplibregl.ScaleControl({unit: "metric"}), "bottom-left");
+}
+const exag = () => parseFloat(document.getElementById("exag").value);
+function setTerrain() {
+  const on = document.getElementById("terrain3d").checked;
+  map.setTerrain(on ? {source: "terrain", exaggeration: exag()} : null);
+  document.getElementById("exagv").textContent = exag() + "×";
+}
+
+map.on("load", () => {
+  if (params.has("exag")) document.getElementById("exag").value = params.get("exag");
+  setTerrain();
+  window.mapReady = true;
+});
+
+// layer toggles
+const show = (id, on) => map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+for (const id of ["relief5", "relief1", "imagery", "source", "sigma", "effres", "sites", "contours"]) {
+  document.getElementById(id).addEventListener("change", e => {
+    show(id, e.target.checked);
+    if (id === "sites") show("site-labels", e.target.checked);
+    if (id === "contours") show("contour-labels", e.target.checked);
+  });
+}
+document.getElementById("opacity").addEventListener("input", e => {
+  for (const id of ["source", "sigma", "effres"]) map.setPaintProperty(id, "raster-opacity", parseFloat(e.target.value));
+});
+document.getElementById("terrain3d").addEventListener("change", setTerrain);
+document.getElementById("exag").addEventListener("input", setTerrain);
+
+// depth band: polygons from gdal_contour carry amin/amax of their elevation interval
+const bandTop = document.getElementById("bandTop"), bandBot = document.getElementById("bandBot");
+LEVELS.slice(0, -1).forEach(v => bandTop.add(new Option(-v, v)));
+LEVELS.slice(1).forEach(v => bandBot.add(new Option(-v, v)));
+bandTop.value = -10; bandBot.value = -20;
+function setBand() {
+  const hi = parseFloat(bandTop.value), lo = parseFloat(bandBot.value);
+  map.setFilter("bands", ["all", [">=", ["get", "amin"], Math.min(hi, lo) - 0.01], ["<=", ["get", "amax"], Math.max(hi, lo) + 0.01]]);
+  show("bands", document.getElementById("bands").checked);
+}
+for (const el of [bandTop, bandBot, document.getElementById("bands")]) el.addEventListener("change", setBand);
+map.on("load", setBand);
+
+// click readout from the full-resolution rasters (server.py), or, on a static host, from the tiles
+const fmt = (v, u = " m") => v === null || v === undefined ? "–" : v + u;
+const SRC = [["SHOM 2015 LiDAR", "#0072B2"], ["LiDAR/EM710 blend", "#CC79A7"], ["KM1416 EM710 multibeam", "#56B4E9"],
+             ["SHOM 20 m sea (bias-corrected)", "#E69F00"], ["SHOM 100 m facade", "#D55E00"], ["SHOM 20 m land", "#999999"]];
+async function tilePixel(layer, ext, z, lng, lat) {
+  const n = 2 ** z, x = (lng + 180) / 360 * n, s = Math.sin(lat * Math.PI / 180);
+  const y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n;
+  const res = await fetch(`tiles/${layer}/${z}/${Math.floor(x)}/${Math.floor(y)}.${ext}`);
+  if (!res.ok) return null;
+  const img = await createImageBitmap(await res.blob());
+  const c = new OffscreenCanvas(256, 256).getContext("2d", {willReadFrequently: true});
+  c.drawImage(img, 0, 0);
+  return c.getImageData(Math.floor((x % 1) * 256), Math.floor((y % 1) * 256), 1, 1).data;
+}
+async function staticReadout(lng, lat) {
+  const t = await tilePixel("terrain", "png", 15, lng, lat) || await tilePixel("terrain", "png", 12, lng, lat);
+  const s = await tilePixel("source", "webp", 14, lng, lat);
+  let src = null;
+  if (s && s[3] > 128) {     // nearest palette colour (tiles are lossy WEBP)
+    const d = ([, h]) => [1, 3, 5].reduce((a, i, k) => a + (parseInt(h.slice(i, i + 2), 16) - s[k]) ** 2, 0);
+    src = SRC.reduce((a, b) => d(b) < d(a) ? b : a)[0];
+  }
+  const h = t ? Math.round((t[0] * 256 + t[1] + t[2] / 256 - 32768) * 10) / 10 : null;
+  return {elev_5m: src ? h : null, source_5m: src || "outside the surveyed area"};
+}
+map.on("click", async e => {
+  const {lng, lat} = e.lngLat;
+  let r = null;
+  try { const res = await fetch(`q?lon=${lng}&lat=${lat}`); if (res.ok) r = await res.json(); } catch (err) {}
+  const full = r && !r.error;
+  if (!full) r = await staticReadout(lng, lat);
+  let rows = [[full ? "Elevation (5 m)" : "Elevation (~5 m)", fmt(r.elev_5m)], ["Source", r.source_5m || "–"]];
+  if (full) rows.push(["Uncertainty 1σ", fmt(r.sigma_5m)]);
+  if (full && r.elev_1m !== undefined) rows.push(["Elevation (1 m)", fmt(r.elev_1m)], ["LiDAR points (5×5 m)", r.npts],
+                                                  ["True resolution", fmt(r.eff_res_1m)], ["Sensor", r.sensor_1m || "–"]);
+  rows.push(["Lat, lon", `${lat.toFixed(5)}, ${lng.toFixed(5)}`]);
+  if (full) rows.push(["UTM 6S E, N", `${r.utm_e}, ${r.utm_n}`]);
+  new maplibregl.Popup({maxWidth: "320px"}).setLngLat(e.lngLat)
+    .setHTML("<table>" + rows.map(([a, b]) => `<tr><td>${a}</td><td><b>${b}</b></td></tr>`).join("") + "</table>")
+    .addTo(map);
+});
+map.on("mousemove", e => {
+  document.getElementById("readout").textContent = `${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)}`;
+});
+
+// fly-through: the same path record_flythrough.py renders frame by frame
+let touring = false;
+document.getElementById("tour").addEventListener("click", () => {
+  if (touring) { touring = false; return; }
+  touring = true;
+  const t0 = performance.now();
+  const step = now => {
+    const t = (now - t0) / 1000;
+    if (!touring || t > FLYPATH.duration) { touring = false; return; }
+    map.jumpTo(camAt(t));
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+});
+document.getElementById("home").addEventListener("click", () => map.flyTo({...HOME, duration: 2500}));
+
+// used by the recorder: jump to time t and resolve once every tile in view has loaded
+window.renderAt = t => new Promise(resolve => {
+  map.jumpTo(camAt(t));
+  map.once("idle", () => resolve(true));
+  map.triggerRepaint();
+});
+</script>
+</body>
+</html>
