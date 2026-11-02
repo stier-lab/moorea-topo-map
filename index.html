@@ -82,6 +82,7 @@
     #readout, .maplibregl-ctrl-scale { display: none; }
     #panel select { padding: 0 2px; }
   }
+  #tourpick { flex: 1; min-width: 0; }
   @media (prefers-reduced-motion: reduce) { #tour { display: none; } }
   body.video #panel, body.video #readout, body.video .maplibregl-ctrl { display: none !important; }
 </style>
@@ -123,7 +124,8 @@
   <label><input type="checkbox" id="terrain3d" checked> 3D terrain</label>
   <div class="row"><label class="inline" for="exag">Exaggeration</label>
     <input type="range" id="exag" min="1" max="5" step="0.25" value="1.5"> <output id="exagv">1.5×</output></div>
-  <div class="buttons"><button id="tour">Fly the north shore</button><button id="home" class="quiet">Whole island</button></div>
+  <div class="row"><label class="inline" for="tourpick">Fly-through</label><select id="tourpick"></select></div>
+  <div class="buttons"><button id="tour">Fly</button><button id="home" class="quiet">Whole island</button></div>
   <p class="hint">Click anywhere for depth and data source. Right-drag or Ctrl-drag to tilt and rotate.</p>
 
   <details>
@@ -320,9 +322,13 @@ map.on("mousemove", e => {
 
 // fly-through: the same path record_flythrough.py renders frame by frame
 let touring = false;
-document.getElementById("tour").addEventListener("click", () => {
-  const btn = document.getElementById("tour");
-  const stop = () => { touring = false; btn.textContent = "Fly the north shore"; };
+const btn = document.getElementById("tour"), pick = document.getElementById("tourpick");
+for (const [key, p] of Object.entries(FLYPATHS)) pick.add(new Option(`${p.name}, ${p.duration} s`, key));
+if (FLYPATHS[params.get("tour")]) pick.value = params.get("tour");
+FLYPATH = FLYPATHS[pick.value];
+const stop = () => { touring = false; btn.textContent = "Fly"; };
+pick.addEventListener("change", () => { stop(); FLYPATH = FLYPATHS[pick.value]; });
+btn.addEventListener("click", () => {
   if (touring) { stop(); return; }
   touring = true; btn.textContent = "Stop";
   const t0 = performance.now();
